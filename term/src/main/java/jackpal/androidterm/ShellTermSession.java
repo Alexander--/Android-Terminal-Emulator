@@ -16,12 +16,7 @@
 
 package jackpal.androidterm;
 
-import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.util.ArrayList;
 
 import android.os.Handler;
@@ -91,7 +86,7 @@ public class ShellTermSession extends TermSession {
              @Override
              public void run() {
                 Log.i(TermDebug.LOG_TAG, "waiting for: " + mProcId);
-                int result = Exec.waitFor(mProcId);
+                int result = TermExec.waitFor(mProcId);
                 Log.i(TermDebug.LOG_TAG, "Subprocess exited: " + result);
                 mMsgHandler.sendMessage(mMsgHandler.obtainMessage(PROCESS_EXITED, result));
              }
@@ -195,7 +190,11 @@ public class ShellTermSession extends TermSession {
             args = argList.toArray(new String[1]);
         }
 
-        mTermFd = Exec.createSubprocess(arg0, args, env, processId);
+        try {
+            mTermFd = Exec.createSubprocess(arg0, args, env, processId);
+        } catch (IOException e) {
+            throw new RuntimeException("Nothing could possible have gone wrong, right?");
+        }
     }
 
     private ArrayList<String> parse(String cmd) {

@@ -15,8 +15,11 @@
  */
 
 package jackpal.androidterm;
+import android.os.ParcelFileDescriptor;
 
+import java.io.File;
 import java.io.FileDescriptor;
+import java.io.IOException;
 
 /**
  * Utility methods for creating and managing a subprocess.
@@ -49,9 +52,20 @@ public class Exec
      * @return the file descriptor of the started process.
      *
      */
-    public static native FileDescriptor createSubprocess(
-        String cmd, String[] args, String[] envVars, int[] processId);
-        
+    public static FileDescriptor createSubprocess(
+            String cmd, String[] args, String[] envVars, int[] processId) throws IOException
+    {
+        final ParcelFileDescriptor master = ParcelFileDescriptor.open(new File("/dev/ptmx"),
+                ParcelFileDescriptor.MODE_READ_WRITE);
+
+        final int pid = TermExec.createSubprocess(master, cmd, args, envVars);
+
+        if (processId != null && processId.length >= 1)
+            processId[0] = pid;
+
+        return master.getFileDescriptor();
+    }
+
     /**
      * Set the widow size for a given pty. Allows programs
      * connected to the pty learn how large their screen is.
@@ -65,15 +79,6 @@ public class Exec
      */
     public static native void setPtyUTF8Mode(FileDescriptor fd,
        boolean utf8Mode);
-
-    /**
-     * Causes the calling thread to wait for the process associated with the
-     * receiver to finish executing.
-     *
-     * @return The exit value of the Process being waited on
-     *
-     */
-    public static native int waitFor(int processId);
 
     /**
      * Close a given file descriptor.
