@@ -17,9 +17,11 @@
 package jackpal.androidterm;
 
 import android.app.Service;
-import android.os.Binder;
-import android.os.IBinder;
+import android.content.IntentSender;
+import android.net.Uri;
+import android.os.*;
 import android.content.Intent;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.app.Notification;
 import android.app.PendingIntent;
@@ -27,7 +29,12 @@ import android.app.PendingIntent;
 import jackpal.androidterm.emulatorview.TermSession;
 
 import jackpal.androidterm.compat.ServiceForegroundCompat;
+import jackpal.androidterm.libtermexec.v1.*;
 import jackpal.androidterm.util.SessionList;
+import jackpal.androidterm.util.TermSettings;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class TermService extends Service implements TermSession.FinishCallback
 {
@@ -36,6 +43,8 @@ public class TermService extends Service implements TermSession.FinishCallback
 
     private static final int RUNNING_NOTIFICATION = 1;
     private ServiceForegroundCompat compat;
+
+    private RemoteCallbackList<RBinder> binderList;
 
     private SessionList mTermSessions;
 
@@ -58,14 +67,26 @@ public class TermService extends Service implements TermSession.FinishCallback
 
     @Override
     public IBinder onBind(Intent intent) {
-        Log.i("TermService", "Activity called onBind()");
-        return mTSBinder;
+        if (TermExec.SERVICE_ACTION_V1.equals(intent.getAction())) {
+            Log.i("TermService", "Outside process called onBind()");
+
+            return createBinder();
+        } else {
+            Log.i("TermService", "Activity called onBind()");
+
+            return mTSBinder;
+        }
+    }
+
+    private IBinder createBinder() {
+        return null;
     }
 
     @Override
     public void onCreate() {
         compat = new ServiceForegroundCompat(this);
         mTermSessions = new SessionList();
+        binderList = new RemoteCallbackList<RBinder>();
 
         /* Put the service in the foreground. */
         Notification notification = new Notification(R.drawable.ic_stat_service_notification_icon, getText(R.string.service_notify_text), System.currentTimeMillis());
@@ -82,6 +103,7 @@ public class TermService extends Service implements TermSession.FinishCallback
 
     @Override
     public void onDestroy() {
+        binderList.kill();
         compat.stopForeground(true);
         for (TermSession session : mTermSessions) {
             /* Don't automatically remove from list of sessions -- we clear the
@@ -100,5 +122,63 @@ public class TermService extends Service implements TermSession.FinishCallback
 
     public void onSessionFinish(TermSession session) {
         mTermSessions.remove(session);
+    }
+
+    private final class RBinder extends ITerminal.Stub {
+        GenericTermSession session;
+
+        final List<ResultReceiver> receivers = new ArrayList<ResultReceiver>();
+
+        @Override
+        public IntentSender startSession(ParcelFileDescriptor pseudoTerminalMultiplexerFd) {
+            if (session == null) {
+                final TermSettings settings = new TermSettings(getResources(),
+                        PreferenceManager.getDefaultSharedPreferences(getApplicationContext()));
+
+                mTermSessions.add(session = new GenericTermSession(settings, pseudoTerminalMultiplexerFd));
+
+                session.setFinishCallback(new RBinderCleanupCallback());
+
+                binderList.register(this);
+
+                // distinct Intent Uri and PendingIntent requestCode should be sufficient to avoid collisions
+
+                final Intent switchIntent = new Intent(RemoteInterface.PRIVACT_OPEN_NEW_WINDOW)
+                        .setData(Uri.parse(session.getHandle()))
+                        .addCategory(Intent.CATEGORY_DEFAULT)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(RemoteInterface.PRIVEXTRA_TARGET_WINDOW, session.getHandle());
+
+                final PendingIntent result = PendingIntent.getActivity(getApplicationContext(), session.hashCode(),
+                        switchIntent, 0);
+
+                return result.getIntentSender();
+            }
+
+            return null;
+        }
+
+        @Override
+        public void registerSessionCallback(ResultReceiver callback) {
+            receivers.add(callback);
+        }
+    }
+
+    private final class RBinderCleanupCallback implements TermSession.FinishCallback {
+        @Override
+        public void onSessionFinish(TermSession session) {
+            int callbackCount = binderList.beginBroadcast();
+            for (int i = 0; i < callbackCount; i++) {
+                RBinder binder = binderList.getBroadcastItem(i);
+                if (session == binder.session) {
+                    for (ResultReceiver receiver:binder.receivers)
+                        receiver.send(0, new Bundle());
+                    binderList.unregister(binder);
+                }
+            }
+            binderList.finishBroadcast();
+
+            TermService.this.onSessionFinish(session);
+        }
     }
 }

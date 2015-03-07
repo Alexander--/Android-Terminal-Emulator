@@ -16,46 +16,27 @@
 
 package jackpal.androidterm;
 
-import java.io.*;
-import java.util.ArrayList;
-
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-
-import jackpal.androidterm.emulatorview.ColorScheme;
-import jackpal.androidterm.emulatorview.TermSession;
-import jackpal.androidterm.emulatorview.UpdateCallback;
-
 import jackpal.androidterm.compat.FileCompat;
 import jackpal.androidterm.util.TermSettings;
 
+import java.io.*;
+import java.util.ArrayList;
+
 /**
- * A terminal session, consisting of a TerminalEmulator, a TranscriptScreen,
- * the PID of the process attached to the session, and the I/O streams used to
- * talk to the process.
+ * A terminal session, controlling the process attached to the session (usually
+ * a shell). It keeps track of process PID and destroys it's process group
+ * upon stopping.
  */
-public class ShellTermSession extends TermSession {
-    //** Set to true to force into 80 x 24 for testing with vttest. */
-    private static final boolean VTTEST_MODE = false;
-    private TermSettings mSettings;
-
+public class ShellTermSession extends GenericTermSession {
     private int mProcId;
-    private FileDescriptor mTermFd;
     private Thread mWatcherThread;
-
-    // A cookie which uniquely identifies this session.
-    private String mHandle;
 
     private String mInitialCommand;
 
-    public static final int PROCESS_EXIT_FINISHES_SESSION = 0;
-    public static final int PROCESS_EXIT_DISPLAYS_MESSAGE = 1;
-
-    private String mProcessExitMessage;
-
     private static final int PROCESS_EXITED = 1;
-
     private Handler mMsgHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -68,36 +49,22 @@ public class ShellTermSession extends TermSession {
         }
     };
 
-    private UpdateCallback mUTF8ModeNotify = new UpdateCallback() {
-        public void onUpdate() {
-            Exec.setPtyUTF8Mode(mTermFd, getUTF8Mode());
-        }
-    };
-
     public ShellTermSession(TermSettings settings, String initialCommand) {
-        super();
-
-        updatePrefs(settings);
+        super(settings, false);
 
         initializeSession();
         mInitialCommand = initialCommand;
 
         mWatcherThread = new Thread() {
-             @Override
-             public void run() {
+            @Override
+            public void run() {
                 Log.i(TermDebug.LOG_TAG, "waiting for: " + mProcId);
                 int result = TermExec.waitFor(mProcId);
                 Log.i(TermDebug.LOG_TAG, "Subprocess exited: " + result);
                 mMsgHandler.sendMessage(mMsgHandler.obtainMessage(PROCESS_EXITED, result));
-             }
+            }
         };
         mWatcherThread.setName("Process watcher");
-    }
-
-    public void updatePrefs(TermSettings settings) {
-        mSettings = settings;
-        setColorScheme(new ColorScheme(settings.getColorScheme()));
-        setDefaultUTF8Mode(settings.defaultToUTF8Mode());
     }
 
     private void initializeSession() {
@@ -149,14 +116,7 @@ public class ShellTermSession extends TermSession {
 
     @Override
     public void initializeEmulator(int columns, int rows) {
-        if (VTTEST_MODE) {
-            columns = 80;
-            rows = 24;
-        }
         super.initializeEmulator(columns, rows);
-
-        Exec.setPtyUTF8Mode(mTermFd, getUTF8Mode());
-        setUTF8ModeUpdateCallback(mUTF8ModeNotify);
 
         mWatcherThread.start();
         sendInitialCommand(mInitialCommand);
@@ -245,69 +205,13 @@ public class ShellTermSession extends TermSession {
         return result;
     }
 
-    @Override
-    public void updateSize(int columns, int rows) {
-        if (VTTEST_MODE) {
-            columns = 80;
-            rows = 24;
-        }
-        // Inform the attached pty of our new size:
-        Exec.setPtyWindowSize(mTermFd, rows, columns, 0, 0);
-        super.updateSize(columns, rows);
-    }
-
-    /* XXX We should really get this ourselves from the resource bundle, but
-       we cannot hold a context */
-    public void setProcessExitMessage(String message) {
-        mProcessExitMessage = message;
-    }
-
     private void onProcessExit(int result) {
-        if (mSettings.closeWindowOnProcessExit()) {
-            finish();
-        } else if (mProcessExitMessage != null) {
-            try {
-                byte[] msg = ("\r\n[" + mProcessExitMessage + "]").getBytes("UTF-8");
-                appendToEmulator(msg, 0, msg.length);
-                notifyUpdate();
-            } catch (UnsupportedEncodingException e) {
-                // Never happens
-            }
-        }
+        onProcessExit();
     }
 
     @Override
     public void finish() {
         Exec.hangupProcessGroup(mProcId);
-        Exec.close(mTermFd);
         super.finish();
-    }
-
-    /**
-     * Gets the terminal session's title.  Unlike the superclass's getTitle(),
-     * if the title is null or an empty string, the provided default title will
-     * be returned instead.
-     *
-     * @param defaultTitle The default title to use if this session's title is
-     *     unset or an empty string.
-     */
-    public String getTitle(String defaultTitle) {
-        String title = super.getTitle();
-        if (title != null && title.length() > 0) {
-            return title;
-        } else {
-            return defaultTitle;
-        }
-    }
-
-    public void setHandle(String handle) {
-        if (mHandle != null) {
-            throw new IllegalStateException("Cannot change handle once set");
-        }
-        mHandle = handle;
-    }
-
-    public String getHandle() {
-        return mHandle;
     }
 }

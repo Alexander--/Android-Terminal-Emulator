@@ -1,5 +1,8 @@
 package jackpal.androidterm;
 
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.IntentSender;
 import android.os.*;
 import android.support.annotation.NonNull;
 import java.io.FileDescriptor;

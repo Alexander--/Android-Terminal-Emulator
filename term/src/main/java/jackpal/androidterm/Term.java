@@ -489,7 +489,7 @@ public class Term extends Activity implements UpdateCallback {
     }
 
     protected static TermSession createTermSession(Context context, TermSettings settings, String initialCommand) {
-        ShellTermSession session = new ShellTermSession(settings, initialCommand);
+        GenericTermSession session = new ShellTermSession(settings, initialCommand);
         // XXX We should really be able to fetch this from within TermSession
         session.setProcessExitMessage(context.getString(R.string.process_exit_message));
 
@@ -543,7 +543,7 @@ public class Term extends Activity implements UpdateCallback {
 
         if (mTermSessions != null) {
             for (TermSession session : mTermSessions) {
-                ((ShellTermSession) session).updatePrefs(mSettings);
+                ((GenericTermSession) session).updatePrefs(mSettings);
             }
         }
 
