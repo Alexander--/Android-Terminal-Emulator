@@ -42,7 +42,8 @@ public class GenericTermSession extends TermSession {
     // A cookie which uniquely identifies this session.
     private String mHandle;
 
-    FileDescriptor mTermFd;
+    final ParcelFileDescriptor mTermFd;
+
     TermSettings mSettings;
 
     public static final int PROCESS_EXIT_FINISHES_SESSION = 0;
@@ -56,17 +57,12 @@ public class GenericTermSession extends TermSession {
         }
     };
 
-    GenericTermSession(TermSettings settings, boolean exitOnEOF) {
+    GenericTermSession(ParcelFileDescriptor mTermFd, TermSettings settings, boolean exitOnEOF) {
         super(exitOnEOF);
 
+        this.mTermFd = mTermFd;
+
         updatePrefs(settings);
-    }
-
-    GenericTermSession(TermSettings settings, ParcelFileDescriptor ptmxFd) {
-        this(settings, true);
-
-        setTermIn(new ParcelFileDescriptor.AutoCloseInputStream(ptmxFd));
-        setTermOut(new ParcelFileDescriptor.AutoCloseOutputStream(ptmxFd));
     }
 
     public void updatePrefs(TermSettings settings) {

@@ -17,6 +17,7 @@
 package jackpal.androidterm;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.UUID;
 
 import android.app.Activity;
@@ -158,19 +159,24 @@ public class RemoteInterface extends Activity {
             }
         }
 
-        TermSession session = Term.createTermSession(this, mSettings, initialCommand);
-        session.setFinishCallback(service);
-        service.getSessions().add(session);
+        try {
+            TermSession session = Term.createTermSession(this, mSettings, initialCommand);
 
-        String handle = UUID.randomUUID().toString();
-        ((GenericTermSession) session).setHandle(handle);
+            session.setFinishCallback(service);
+            service.getSessions().add(session);
 
-        Intent intent = new Intent(PRIVACT_OPEN_NEW_WINDOW);
-        intent.addCategory(Intent.CATEGORY_DEFAULT);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
+            String handle = UUID.randomUUID().toString();
+            ((GenericTermSession) session).setHandle(handle);
 
-        return handle;
+            Intent intent = new Intent(PRIVACT_OPEN_NEW_WINDOW);
+            intent.addCategory(Intent.CATEGORY_DEFAULT);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+
+            return handle;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     protected String appendToWindow(String handle, String iInitialCommand) {

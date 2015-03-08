@@ -23,26 +23,17 @@ interface ITerminal {
       * should keep your ParcelFileDescriptor around and allow ServiceConnection to call this method
       * again, when reconnection happens, in case service hosting the session is killed by system.
       *
-      * You can have only one simultaneously running session per binding. Initiate one more binding
-      * or stop previous session to start another one. Attempts to start a session on binding, which
-      * still have active session are ignored.
-      *
-      * @param pseudoTerminalMultiplexerFd file descriptor, obtained by opening /dev/ptmx.
-      *
-      * @return IntentSender, that can be used to start corresponding Terminal Activity.
-      */
-    IntentSender startSession(in ParcelFileDescriptor pseudoTerminalMultiplexerFd);
-
-    /**
-      * Allows caller to be notified of terminal session events. Multiple callbacks can be made.
-      * Multiple calls can happen on each, and new call types can be introduced, so prepare to
-      * ignore unknown Intent actions and extras.
+      * Allows caller to be notified of terminal session events. Multiple calls can happen on each,
+      * and new call types can be introduced, so prepare to ignore unknown event codes.
       *
       * So far only notifications about session end (code 0) are supported. This notification is
       * issued after abovementioned file descriptor is closed and the session is ended from
       * Terminal's standpoint.
       *
+      * @param pseudoTerminalMultiplexerFd file descriptor, obtained by opening /dev/ptmx.
       * @param a callback
+      *
+      * @return IntentSender, that can be used to start corresponding Terminal Activity.
       */
-    void registerSessionCallback(in ResultReceiver callback);
+    IntentSender startSession(in ParcelFileDescriptor pseudoTerminalMultiplexerFd, in ResultReceiver callback);
 }

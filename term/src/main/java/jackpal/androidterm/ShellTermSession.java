@@ -18,6 +18,7 @@ package jackpal.androidterm;
 
 import android.os.Handler;
 import android.os.Message;
+import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import jackpal.androidterm.compat.FileCompat;
 import jackpal.androidterm.util.TermSettings;
@@ -49,10 +50,15 @@ public class ShellTermSession extends GenericTermSession {
         }
     };
 
-    public ShellTermSession(TermSettings settings, String initialCommand) {
-        super(settings, false);
+    public ShellTermSession(TermSettings settings, String initialCommand) throws IOException {
+        super(ParcelFileDescriptor.open(new File("/dev/ptmx"), ParcelFileDescriptor.MODE_READ_WRITE),
+                settings, false);
 
         initializeSession();
+
+        setTermOut(new ParcelFileDescriptor.AutoCloseOutputStream(mTermFd));
+        setTermIn(new ParcelFileDescriptor.AutoCloseInputStream(mTermFd));
+
         mInitialCommand = initialCommand;
 
         mWatcherThread = new Thread() {
@@ -67,10 +73,8 @@ public class ShellTermSession extends GenericTermSession {
         mWatcherThread.setName("Process watcher");
     }
 
-    private void initializeSession() {
+    private void initializeSession() throws IOException {
         TermSettings settings = mSettings;
-
-        int[] processId = new int[1];
 
         String path = System.getenv("PATH");
         if (settings.doPathExtensions()) {
@@ -94,11 +98,7 @@ public class ShellTermSession extends GenericTermSession {
         env[1] = "PATH=" + path;
         env[2] = "HOME=" + settings.getHomePath();
 
-        createSubprocess(processId, settings.getShell(), env);
-        mProcId = processId[0];
-
-        setTermOut(new FileOutputStream(mTermFd));
-        setTermIn(new FileInputStream(mTermFd));
+        mProcId = createSubprocess(settings.getShell(), env);
     }
 
     private String checkPath(String path) {
@@ -128,7 +128,7 @@ public class ShellTermSession extends GenericTermSession {
         }
     }
 
-    private void createSubprocess(int[] processId, String shell, String[] env) {
+    private int createSubprocess(String shell, String[] env) throws IOException {
         ArrayList<String> argList = parse(shell);
         String arg0;
         String[] args;
@@ -150,11 +150,7 @@ public class ShellTermSession extends GenericTermSession {
             args = argList.toArray(new String[1]);
         }
 
-        try {
-            mTermFd = Exec.createSubprocess(arg0, args, env, processId);
-        } catch (IOException e) {
-            throw new RuntimeException("Nothing could possible have gone wrong, right?");
-        }
+        return TermExec.createSubprocess(mTermFd, arg0, args, env);
     }
 
     private ArrayList<String> parse(String cmd) {

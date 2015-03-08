@@ -46,21 +46,10 @@
 
 #include "termExec.h"
 
-static jclass class_fileDescriptor;
-static jfieldID field_fileDescriptor_descriptor;
-static jmethodID method_fileDescriptor_init;
-
 static void android_os_Exec_setPtyWindowSize(JNIEnv *env, jobject clazz,
-    jobject fileDescriptor, jint row, jint col, jint xpixel, jint ypixel)
+    jint fd, jint row, jint col, jint xpixel, jint ypixel)
 {
-    int fd;
     struct winsize sz;
-
-    fd = env->GetIntField(fileDescriptor, field_fileDescriptor_descriptor);
-
-    if (env->ExceptionOccurred() != NULL) {
-        return;
-    }
 
     sz.ws_row = row;
     sz.ws_col = col;
@@ -70,17 +59,9 @@ static void android_os_Exec_setPtyWindowSize(JNIEnv *env, jobject clazz,
     ioctl(fd, TIOCSWINSZ, &sz);
 }
 
-static void android_os_Exec_setPtyUTF8Mode(JNIEnv *env, jobject clazz,
-    jobject fileDescriptor, jboolean utf8Mode)
+static void android_os_Exec_setPtyUTF8Mode(JNIEnv *env, jobject clazz, jint fd, jboolean utf8Mode)
 {
-    int fd;
     struct termios tios;
-
-    fd = env->GetIntField(fileDescriptor, field_fileDescriptor_descriptor);
-
-    if (env->ExceptionOccurred() != NULL) {
-        return;
-    }
 
     tcgetattr(fd, &tios);
     if (utf8Mode) {
@@ -91,76 +72,21 @@ static void android_os_Exec_setPtyUTF8Mode(JNIEnv *env, jobject clazz,
     tcsetattr(fd, TCSANOW, &tios);
 }
 
-static void android_os_Exec_close(JNIEnv *env, jobject clazz, jobject fileDescriptor)
-{
-    int fd;
-
-    fd = env->GetIntField(fileDescriptor, field_fileDescriptor_descriptor);
-
-    if (env->ExceptionOccurred() != NULL) {
-        return;
-    }
-
-    close(fd);
-}
-
-static void android_os_Exec_hangupProcessGroup(JNIEnv *env, jobject clazz,
-    jint procId) {
+static void android_os_Exec_hangupProcessGroup(JNIEnv *env, jobject clazz, jint procId) {
     kill(-procId, SIGHUP);
-}
-
-
-static int register_FileDescriptor(JNIEnv *env)
-{
-    jclass localRef_class_fileDescriptor = env->FindClass("java/io/FileDescriptor");
-
-    if (localRef_class_fileDescriptor == NULL) {
-        LOGE("Can't find class java/io/FileDescriptor");
-        return -1;
-    }
-
-    class_fileDescriptor = (jclass) env->NewGlobalRef(localRef_class_fileDescriptor);
-
-    env->DeleteLocalRef(localRef_class_fileDescriptor);
-
-    if (class_fileDescriptor == NULL) {
-        LOGE("Can't get global ref to class java/io/FileDescriptor");
-        return -1;
-    }
-
-    field_fileDescriptor_descriptor = env->GetFieldID(class_fileDescriptor, "descriptor", "I");
-
-    if (field_fileDescriptor_descriptor == NULL) {
-        LOGE("Can't find FileDescriptor.descriptor");
-        return -1;
-    }
-
-    method_fileDescriptor_init = env->GetMethodID(class_fileDescriptor, "<init>", "()V");
-    if (method_fileDescriptor_init == NULL) {
-        LOGE("Can't find FileDescriptor.init");
-        return -1;
-     }
-     return 0;
 }
 
 static const char *classPathName = "jackpal/androidterm/Exec";
 static JNINativeMethod method_table[] = {
-    { "setPtyWindowSize", "(Ljava/io/FileDescriptor;IIII)V",
+    { "setPtyWindowSizeInternal", "(IIIII)V",
         (void*) android_os_Exec_setPtyWindowSize},
-    { "setPtyUTF8Mode", "(Ljava/io/FileDescriptor;Z)V",
+    { "setPtyUTF8ModeInternal", "(IZ)V",
         (void*) android_os_Exec_setPtyUTF8Mode},
-    { "close", "(Ljava/io/FileDescriptor;)V",
-        (void*) android_os_Exec_close},
     { "hangupProcessGroup", "(I)V",
         (void*) android_os_Exec_hangupProcessGroup}
 };
 
 int init_Exec(JNIEnv *env) {
-    if (register_FileDescriptor(env) < 0) {
-        LOGE("Failed to register class java/io/FileDescriptor");
-        return JNI_FALSE;
-    }
-
     if (!registerNativeMethods(env, classPathName, method_table,
                  sizeof(method_table) / sizeof(method_table[0]))) {
         return JNI_FALSE;
