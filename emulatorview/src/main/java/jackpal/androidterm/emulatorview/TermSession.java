@@ -155,10 +155,7 @@ public class TermSession {
                         int read = mTermIn.read(mBuffer);
                         if (read == -1) {
                             // EOF -- process exited
-                            if (exitOnEOF) mMsgHandler.sendMessage(
-                                    mMsgHandler.obtainMessage(NEW_INPUT));
-
-                            return;
+                            break;
                         }
                         int offset = 0;
                         while (read > 0) {
@@ -173,6 +170,8 @@ public class TermSession {
                 } catch (IOException e) {
                 } catch (InterruptedException e) {
                 }
+
+                if (exitOnEOF) mMsgHandler.sendMessage(mMsgHandler.obtainMessage(EOF));
             }
         };
         mReaderThread.setName("TermSession input reader");
@@ -222,7 +221,9 @@ public class TermSession {
                     // Ignore exception
                     // We don't really care if the receiver isn't listening.
                     // We just make a best effort to answer the query.
+                    e.printStackTrace();
                 } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
         };

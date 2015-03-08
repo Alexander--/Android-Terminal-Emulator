@@ -18,10 +18,14 @@ package jackpal.androidterm;
 
 import android.app.Service;
 import android.content.IntentSender;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.*;
 import android.content.Intent;
 import android.preference.PreferenceManager;
+import android.text.TextUtils;
 import android.util.Log;
 import android.app.Notification;
 import android.app.PendingIntent;
@@ -32,6 +36,8 @@ import jackpal.androidterm.compat.ServiceForegroundCompat;
 import jackpal.androidterm.libtermexec.v1.*;
 import jackpal.androidterm.util.SessionList;
 import jackpal.androidterm.util.TermSettings;
+
+import java.util.UUID;
 
 public class TermService extends Service implements TermSession.FinishCallback
 {
@@ -115,28 +121,63 @@ public class TermService extends Service implements TermSession.FinishCallback
 
     private final class RBinder extends ITerminal.Stub {
         @Override
-        public IntentSender startSession(ParcelFileDescriptor pseudoTerminalMultiplexerFd, ResultReceiver callback) {
-            final TermSettings settings = new TermSettings(getResources(),
-                    PreferenceManager.getDefaultSharedPreferences(getApplicationContext()));
+        public IntentSender startSession(final ParcelFileDescriptor pseudoTerminalMultiplexerFd,
+                                         final ResultReceiver callback) {
+            final String sessionHandle = UUID.randomUUID().toString();
 
-            final GenericTermSession session = new BoundSession(pseudoTerminalMultiplexerFd, settings, "external");
-
-            mTermSessions.add(session);
-
-            // distinct Intent Uri and PendingIntent requestCode should be sufficient to avoid collisions
-
+            // distinct Intent Uri and PendingIntent requestCode must be sufficient to avoid collisions
             final Intent switchIntent = new Intent(RemoteInterface.PRIVACT_OPEN_NEW_WINDOW)
-                    .setData(Uri.parse(session.getHandle()))
+                    .setData(Uri.parse(sessionHandle))
                     .addCategory(Intent.CATEGORY_DEFAULT)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .putExtra(RemoteInterface.PRIVEXTRA_TARGET_WINDOW, session.getHandle());
+                    .putExtra(RemoteInterface.PRIVEXTRA_TARGET_WINDOW, sessionHandle);
 
-            final PendingIntent result = PendingIntent.getActivity(getApplicationContext(), session.hashCode(),
+            final PendingIntent result = PendingIntent.getActivity(getApplicationContext(), sessionHandle.hashCode(),
                     switchIntent, 0);
 
-            session.setFinishCallback(new RBinderCleanupCallback(result, callback));
+            final PackageManager pm = getPackageManager();
+            final String[] pkgs = pm.getPackagesForUid(getCallingUid());
+            if (pkgs == null || pkgs.length == 0)
+                return null;
 
-            return result.getIntentSender();
+            for (String packageName:pkgs) {
+                try {
+                    final PackageInfo pkgInfo = pm.getPackageInfo(packageName, 0);
+
+                    final ApplicationInfo appInfo = pkgInfo.applicationInfo;
+                    if (appInfo == null)
+                        continue;
+
+                    final CharSequence label = pm.getApplicationLabel(appInfo);
+
+                    if (!TextUtils.isEmpty(label)) {
+                        final String niceName = label.toString();
+
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
+                            @Override
+                            public void run() {
+                                final TermSettings settings = new TermSettings(getResources(),
+                                        PreferenceManager.getDefaultSharedPreferences(getApplicationContext()));
+
+                                final GenericTermSession session = new BoundSession(pseudoTerminalMultiplexerFd,
+                                        settings, niceName);
+
+                                mTermSessions.add(session);
+
+                                session.setHandle(sessionHandle);
+                                session.setFinishCallback(new RBinderCleanupCallback(result, callback));
+                                session.setTitle("");
+
+                                session.initializeEmulator(80, 24);
+                            }
+                        });
+                    }
+
+                    return result.getIntentSender();
+                } catch (PackageManager.NameNotFoundException ignore) {}
+            }
+
+            return null;
         }
     }
 

@@ -199,6 +199,9 @@ public class Term extends Activity implements UpdateCallback {
         public boolean onNavigationItemSelected(int position, long id) {
             int oldPosition = mViewFlipper.getDisplayedChild();
             if (position != oldPosition) {
+                if (position >= mViewFlipper.getChildCount()) {
+                    mViewFlipper.addView(createEmulatorView(mTermSessions.get(position)));
+                }
                 mViewFlipper.setDisplayedChild(position);
                 if (mActionBarMode == TermSettings.ACTION_BAR_MODE_HIDES) {
                     mActionBar.hide();
@@ -416,6 +419,7 @@ public class Term extends Activity implements UpdateCallback {
                 } catch (IOException e) {
                     Toast.makeText(this, "Failed to start terminal session", Toast.LENGTH_LONG).show();
                     finish();
+                    return;
                 }
             }
 
